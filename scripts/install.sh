@@ -4,15 +4,19 @@ set -euo pipefail
 echo "=== CodingCrew Installation ==="
 
 REPO_DIR="$HOME/CodingCrew"
+VENV="$REPO_DIR/.venv"
 
 # 1. Runtime-Verzeichnisse anlegen
 echo "[1/5] Erstelle Verzeichnisse..."
 mkdir -p "$REPO_DIR/logs" "$REPO_DIR/worktrees" "$REPO_DIR/workspace"
 
-# 2. Python-Dependencies
+# 2. Virtualenv + Dependencies
 echo "[2/5] Installiere Python-Dependencies..."
 cd "$REPO_DIR"
-pip3 install -e . --quiet 2>&1 | grep -v "^$" || pip3 install pydantic pyyaml requests --quiet
+if [ ! -d "$VENV" ]; then
+    python3 -m venv "$VENV"
+fi
+"$VENV/bin/pip" install -e . --quiet
 
 # 3. .env anlegen wenn nicht vorhanden
 if [ ! -f "$REPO_DIR/.env" ]; then
@@ -28,7 +32,7 @@ fi
 # 4. GitHub-Setup (Repo + Labels anlegen)
 echo "[3/5] GitHub-Setup..."
 set -a && source "$REPO_DIR/.env" && set +a
-python3 "$REPO_DIR/scripts/setup_github.py" --config "$REPO_DIR/crew.yaml" 2>&1 \
+"$VENV/bin/python3" "$REPO_DIR/scripts/setup_github.py" --config "$REPO_DIR/crew.yaml" 2>&1 \
     || echo "  [WARN] GitHub-Setup fehlgeschlagen — gh auth login pruefen"
 
 # 5. Hooks ausfuehrbar machen

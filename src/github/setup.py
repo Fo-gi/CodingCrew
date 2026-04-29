@@ -41,9 +41,11 @@ class GitHubSetup:
     def list_labels(self) -> set[str]:
         try:
             out = self._gh("label", "list", "--repo", self.repo, "--json", "name")
+            if not out.strip():
+                return set()
             data = json.loads(out)
             return {item["name"] for item in data}
-        except RuntimeError:
+        except (RuntimeError, json.JSONDecodeError):
             return set()
 
     def create_label(self, name: str, color: str, description: str = "") -> None:
