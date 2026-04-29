@@ -11,10 +11,10 @@ cd ~/CodingCrew
 
 # 2. .env anlegen und ausfuellen
 cp .env.example .env
-nano .env          # GH_TOKEN, GITHUB_TOKEN, optional ANTHROPIC_API_KEY eintragen
+nano .env          # GH_TOKEN und GITHUB_TOKEN eintragen (gh auth token gibt deinen Token aus)
 
-# 3. crew.yaml anpassen (Ziel-Repo)
-nano crew.yaml     # github.repo auf dein Repo setzen, Modell-URLs pruefen
+# 3. Ziel-Repo in crew.yaml setzen
+nano crew.yaml     # github.repo anpassen, Ollama-URL pruefen
 
 # 4. Installieren (Dependencies + GitHub-Setup + systemd)
 bash scripts/install.sh
