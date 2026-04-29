@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .models import CrewConfig
+from src.models import CrewConfig
 
 
 def find_crew_yaml() -> Path:

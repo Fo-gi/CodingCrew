@@ -1,83 +1,144 @@
 # CodingCrew
 
-Autonome Coding-Crew mit zentraler YAML-Config. Der Orchestrator polled GitHub-Issues, zerlegt Epics, und startet Claude (`claude -p`) mit konfigurierbaren Agenten.
+Autonomer Coding-Orchestrator mit zentraler YAML-Config. Pollt GitHub-Issues, orchestriert Agenten (direkte Ollama-Calls + `claude -p`), erstellt PRs bei Erfolg.
 
-## Architektur
-
-```
-GitHub Issues (Label "agent-ready")
-        │
-        ▼
-Orchestrator (Python, systemd)
-        │
-        ├── Epic Planner (lokales LLM) → neue Issues
-        ├── Coder (claude -p) → Commits
-        ├── Tester (lokales LLM) → Test-Report
-        └── Reviewer (lokales LLM) → Review-Report
-                │
-        Stop-Hook: exit 0 = fertig + PR
-                │
-        Eskalation: 3 Versuche, dann agent-stuck
-```
-
-## Schnellstart
+## Schnellstart (neuer Server)
 
 ```bash
 # 1. Repo klonen
 git clone https://github.com/Fo-gi/CodingCrew.git ~/CodingCrew
 cd ~/CodingCrew
 
-# 2. Config anpassen
-cp crew.yaml crew.yaml.local
-nano crew.yaml.local
+# 2. .env anlegen und ausfuellen
+cp .env.example .env
+nano .env          # GH_TOKEN, GITHUB_TOKEN, optional ANTHROPIC_API_KEY eintragen
 
-# 3. GitHub-Labels anlegen
-python3 scripts/setup_github.py
+# 3. crew.yaml anpassen (Ziel-Repo)
+nano crew.yaml     # github.repo auf dein Repo setzen, Modell-URLs pruefen
 
-# 4. Installieren
+# 4. Installieren (Dependencies + GitHub-Setup + systemd)
 bash scripts/install.sh
-
-# 5. Status prüfen
-systemctl --user status orchestrator
 ```
 
-## Config (`crew.yaml`)
+Nach `install.sh` laeuft der Orchestrator als systemd-User-Service und startet automatisch nach Reboot.
 
-Eine Datei, alles konfiguriert:
+## Voraussetzungen
+
+| Tool | Benoetigt fuer |
+|------|----------------|
+| `python3 >= 3.10` | Orchestrator |
+| `gh` CLI | GitHub-Issues & PRs |
+| `claude` CLI | Coder-Agent (`claude -p`) |
+| `git` | Worktrees |
+
+```bash
+# Claude Code CLI installieren
+npm install -g @anthropic-ai/claude-code
+
+# GitHub CLI
+sudo apt install gh && gh auth login
+```
+
+## Architektur
+
+```
+GitHub Issues (Labels)
+        |
+        v
+Orchestrator (Python asyncio, systemd)
+        |
+        +-- product_owner  (Ollama/Kimi)  -> SPEC schreiben, Epics aufteilen
+        +-- senior_dev     (Ollama)        -> komplexe Implementation
+        +-- junior_dev     (Ollama)        -> einfache Tasks
+        +-- code_reviewer  (Ollama)        -> PR-Review gegen SPEC
+        +-- qa_engineer    (Ollama)        -> Tests + Acceptance Criteria
+        +-- devops_engineer(Ollama)        -> Deployment
+        +-- coder          (claude -p)     -> direkte Implementation via Claude CLI
+                |
+        Stop-Hook (src/hooks/stop_gate.py)
+          exit 0 = Tests gruenn + Diff vorhanden -> PR oeffnen
+          exit 2 = Claude macht weiter
+                |
+        Eskalation: 3 Versuche, dann agent-stuck
+```
+
+## crew.yaml
+
+Alles in einer Datei konfiguriert:
 
 | Sektion | Zweck |
 |---------|-------|
-| `github` | Ziel-Repo, Label-Auto-Create |
-| `tags` | Issue-Labels, Priorität, Handler-Agent |
-| `providers` | Ollama, Anthropic, OpenAI, Gemini |
-| `models` | Alias → Provider + Modellname |
-| `agents` | Name, Prompt, Modell, Tools |
-| `limits` | Iterationen, Budget, Timeout, Parallelität |
-| `litellm` | Proxy-Port, Routing, Fallbacks, Budget |
+| `github` | Ziel-Repo, Auto-Create Repo/Labels |
+| `providers` | Ollama/Anthropic/OpenAI — base_url oder api_key_env |
+| `models` | Alias -> Provider + Modellname + temperature |
+| `agents` | Name, Prompt, Modell, Typ (direct / claude_cli) |
+| `tags` | Issue-Labels, Prioritaet, Handler-Agent |
+| `limits` | Iterationen, Budget, Timeout, max_parallel |
 
-## Täglicher Workflow
+### Agent-Typen
 
-```bash
-# Issue anlegen
-gh issue create --repo Fo-gi/ProjectBlue --label agent-ready --editor
+- `direct`: Direkter API-Call (Ollama oder Anthropic SDK) — fuer Planung/Review
+- `claude_cli`: Via `claude -p` in einem Worktree — fuer eigentliche Implementierung
 
-# Über Nacht: Orchestrator arbeitet ab
-
-# Morgens: PRs reviewen, mergen
-```
-
-## Nützliche Befehle
+## Taeglicher Workflow
 
 ```bash
-# Logs live
+# Issue mit SPEC anlegen
+gh issue create --repo dein-org/dein-repo --label agent-ready --editor
+
+# Orchestrator-Status
+systemctl --user status orchestrator
+
+# Live-Log
 tail -f ~/CodingCrew/logs/orchestrator.log
 
-# Einzelnen Durchlauf (ohne Loop)
+# Pause / Weiter
+systemctl --user stop orchestrator
+systemctl --user start orchestrator
+```
+
+## SPEC.md-Vorlage
+
+```markdown
+# SPEC: <kurze Beschreibung>
+
+## Goal
+<ein Absatz>
+
+## Acceptance criteria (machine-checkable)
+- [ ] ...
+- [ ] All tests pass: `pytest -q`
+- [ ] Lint clean: `ruff check .`
+
+## Out of scope
+- ...
+
+## Budget
+max_iterations: 25
+max_usd: 8
+```
+
+## Nuetzliche Befehle
+
+```bash
+# Config validieren (gibt JSON aus)
+python3 -m src.config
+
+# Einzelner Durchlauf ohne Loop
 python3 -m src.orchestrator --once
 
-# LiteLLM-Config neu generieren
-python3 -m src.litellm_generator
+# GitHub-Setup wiederholen (Labels neu anlegen)
+python3 scripts/setup_github.py
 
-# Config validieren
-python3 -m src.config
+# Stuck-Issue befreien (Ghost-Label)
+source .env && gh issue edit N --repo "$GITHUB_TOKEN_REPO" --remove-label agent-working
+
+# Hooks direkt testen
+echo '{}' | python3 src/hooks/stop_gate.py; echo "Exit: $?"
 ```
+
+## Kein LiteLLM
+
+- Direkte HTTP-Calls zu Ollama (`/api/chat`)
+- SDK oder HTTP zu Anthropic
+- Kein Proxy-Port 4000 noetig

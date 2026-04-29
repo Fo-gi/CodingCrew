@@ -4,58 +4,49 @@ set -euo pipefail
 echo "=== CodingCrew Installation ==="
 
 REPO_DIR="$HOME/CodingCrew"
-mkdir -p "$REPO_DIR/logs"
 
-# 1. Python-Dependencies
-echo "[1/6] Installiere Python-Dependencies..."
+# 1. Runtime-Verzeichnisse anlegen
+echo "[1/5] Erstelle Verzeichnisse..."
+mkdir -p "$REPO_DIR/logs" "$REPO_DIR/worktrees" "$REPO_DIR/workspace"
+
+# 2. Python-Dependencies
+echo "[2/5] Installiere Python-Dependencies..."
 cd "$REPO_DIR"
-if command -v pip3 &>/dev/null; then
-    pip3 install -e . --quiet || pip3 install pydantic pyyaml requests --quiet
-elif command -v pip &>/dev/null; then
-    pip install -e . --quiet || pip install pydantic pyyaml requests --quiet
-fi
+pip3 install -e . --quiet 2>&1 | grep -v "^$" || pip3 install pydantic pyyaml requests --quiet
 
-# 2. .env prüfen
+# 3. .env anlegen wenn nicht vorhanden
 if [ ! -f "$REPO_DIR/.env" ]; then
-    echo "[WARN] .env nicht gefunden. Bitte erstellen:"
-    echo "  cp $HOME/agent/.env $REPO_DIR/.env"
-    echo "  nano $REPO_DIR/.env"
+    echo ""
+    echo "[WARN] .env fehlt. Vorlage wird kopiert..."
+    cp "$REPO_DIR/.env.example" "$REPO_DIR/.env"
+    chmod 600 "$REPO_DIR/.env"
+    echo "  => Bitte ausfuellen: nano $REPO_DIR/.env"
+    echo "  => Danach: bash $REPO_DIR/scripts/install.sh"
+    exit 0
 fi
 
-# 3. GitHub-Labels anlegen
-if [ -f "$REPO_DIR/.env" ]; then
-    echo "[2/6] Prüfe GitHub-Labels..."
-    set -a && source "$REPO_DIR/.env" && set +a
-    python3 "$REPO_DIR/scripts/setup_github.py" 2>/dev/null || echo "  Labels konnten nicht angelegt werden (gh auth prüfen)"
-fi
+# 4. GitHub-Setup (Repo + Labels anlegen)
+echo "[3/5] GitHub-Setup..."
+set -a && source "$REPO_DIR/.env" && set +a
+python3 "$REPO_DIR/scripts/setup_github.py" --config "$REPO_DIR/crew.yaml" 2>&1 \
+    || echo "  [WARN] GitHub-Setup fehlgeschlagen — gh auth login pruefen"
 
-# 4. LiteLLM-Config generieren
-echo "[3/6] Generiere LiteLLM-Config..."
-python3 "$REPO_DIR/src/litellm_generator.py" --config "$REPO_DIR/crew.yaml" --output "$REPO_DIR/config/litellm.yaml"
+# 5. Hooks ausfuehrbar machen
+echo "[4/5] Hook-Rechte setzen..."
+chmod +x "$REPO_DIR/src/hooks/"*.py
 
-# 5. Agent-Templates generieren
-echo "[4/6] Generiere Agent-Templates..."
-python3 "$REPO_DIR/src/agent_generator.py" --config "$REPO_DIR/crew.yaml" --output "$REPO_DIR/template/.claude"
-
-# 6. systemd-Services installieren
-echo "[5/6] Installiere systemd-Services..."
+# 6. systemd-Service
+echo "[5/5] systemd-Service installieren & starten..."
 mkdir -p "$HOME/.config/systemd/user"
-cp "$REPO_DIR/systemd/litellm.service" "$HOME/.config/systemd/user/"
 cp "$REPO_DIR/systemd/orchestrator.service" "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
-
-# 7. Services starten
-echo "[6/6] Starte Services..."
-systemctl --user enable litellm.service
 systemctl --user enable orchestrator.service
-systemctl --user restart litellm.service
-sleep 3
 systemctl --user restart orchestrator.service
 
 echo ""
-echo "=== Installation abgeschlossen ==="
-echo "Status:"
-systemctl --user status litellm orchestrator --no-pager || true
+echo "=== Fertig ==="
+systemctl --user status orchestrator --no-pager -l || true
 echo ""
-echo "Logs: tail -f $REPO_DIR/logs/orchestrator.log"
+echo "Logs:   tail -f $REPO_DIR/logs/orchestrator.log"
 echo "Config: nano $REPO_DIR/crew.yaml"
+echo "Stop:   systemctl --user stop orchestrator"

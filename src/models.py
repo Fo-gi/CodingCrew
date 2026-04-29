@@ -29,7 +29,7 @@ class ModelConfig(BaseModel):
 
 
 class AgentType(str, Enum):
-    litellm = "litellm"
+    direct = "direct"
     claude_cli = "claude_cli"
 
 
@@ -38,7 +38,7 @@ class AgentConfig(BaseModel):
     description: str
     tools: list[str] = Field(default_factory=list)
     prompt: str
-    type: AgentType = AgentType.litellm
+    type: AgentType = AgentType.direct
 
 
 class TagConfig(BaseModel):
@@ -56,27 +56,9 @@ class LimitsConfig(BaseModel):
     timeout_minutes: int = 240
 
 
-class LiteLLMRouterConfig(BaseModel):
-    num_retries: int = 2
-    timeout: int = 180
-    fallbacks: dict[str, list[str]] = Field(default_factory=dict)
-
-
-class LiteLLMBudgetConfig(BaseModel):
-    max_budget: float = 20.0
-    budget_duration: str = "1d"
-
-
-class LiteLLMConfig(BaseModel):
-    port: int = 4000
-    host: str = "127.0.0.1"
-    master_key_env: str = "LITELLM_MASTER_KEY"
-    router: LiteLLMRouterConfig = Field(default_factory=LiteLLMRouterConfig)
-    budget: LiteLLMBudgetConfig = Field(default_factory=LiteLLMBudgetConfig)
-
-
 class GitHubConfig(BaseModel):
     repo: str
+    auto_create_repo: bool = True
     auto_create_labels: bool = True
 
 
@@ -87,7 +69,6 @@ class CrewConfig(BaseModel):
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
-    litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
 
     @field_validator("models")
     @classmethod

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Stop-Hook: läuft jedesmal wenn Claude meint er sei fertig.
-- Prüft Tests/Lint/Diff
-- Wenn alles grün UND es gibt nen Diff: exit 0 (Loop endet, Orchestrator macht PR)
+Stop-Hook: laeuft jedesmal wenn Claude meint er sei fertig.
+- Prueft Tests/Lint/Diff
+- Wenn alles gruen UND es gibt nen Diff: exit 0 (Loop endet, Orchestrator macht PR)
 - Wenn nicht: schreibt Anweisung nach stderr und exit 2
   -> Claude bekommt stderr als next-Input und macht weiter
 - Hartes Cap: Iterationen + Dollar-Budget
@@ -62,8 +62,8 @@ if (cwd / "ruff.toml").exists() or (cwd / "pyproject.toml").exists():
         lint_ok = False
         lint_msg = f"ruff issues:\n{r.stdout[-1000:]}"
 
-# Diff vs main: gibt's überhaupt Änderungen?
-# Erst prüfen ob origin/main existiert (könnte beim ersten Run fehlen)
+# Diff vs main: gibt's ueberhaupt Aenderungen?
+# Erst pruefen ob origin/main existiert (koennte beim ersten Run fehlen)
 r_check = run("git", "rev-parse", "origin/main")
 if r_check.returncode == 0:
     r = run("git", "diff", "--quiet", "origin/main")

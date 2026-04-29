@@ -1,14 +1,16 @@
 [Unit]
 Description=CodingCrew orchestrator
-After=network.target litellm.service
-Requires=litellm.service
+After=network.target
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
 [Service]
 Type=simple
 WorkingDirectory=%h/CodingCrew
+Environment="HOME=%h"
+Environment="XDG_CONFIG_HOME=%h/.config"
 EnvironmentFile=%h/CodingCrew/.env
+ExecStartPre=/bin/bash -lc 'source %h/CodingCrew/.env && echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true'
 ExecStart=/bin/bash -lc 'python3 -m src.orchestrator'
 Restart=on-failure
 RestartSec=30

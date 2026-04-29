@@ -1,40 +1,116 @@
 # === GitHub ===
 github:
   repo: "Fo-gi/ProjectBlue"
+  auto_create_repo: true
   auto_create_labels: true
 
-# === Tags & Prioritäten ===
-# Priority: niedriger = früher abgearbeitet.
-# handler: Welcher Agent bearbeitet das Issue?
+# === Tags & Workflow ===
+# Priority: niedriger = frueher abgearbeitet.
+# Jeder Issue-Typ hat einen definierten Handler-Agent.
+# Wichtig: Tags mit handler=null sind Zustaende, nicht Aufgaben.
 tags:
-  - name: agent-epic
+  # --- INPUT: Du legst Issues mit diesen Tags an ---
+  - name: agent-idea
     priority: 1
-    handler: epic_planner
-    color: "BFD4F2"
-  - name: agent-ready
+    handler: product_owner
+    color: "C2E0C6"
+    description: "Rohe Idee/Vision. Product Owner recherchiert und erstellt SPEC."
+
+  - name: agent-epic
     priority: 2
-    handler: coder
+    handler: product_owner
+    color: "BFD4F2"
+    description: "Grosse Vision. Product Owner zerlegt in Teil-Issues."
+
+  # --- RECHERCHE & SPEZIFIKATION ---
+  - name: agent-research
+    priority: 3
+    handler: product_owner
+    color: "FEF2C0"
+    description: "Offene Recherche/Anforderungsklärung."
+
+  - name: agent-spec
+    priority: 4
+    handler: product_owner
+    color: "D4C5F9"
+    description: "SPEC.md ist geschrieben, wartet auf Design."
+
+  # --- DESIGN & ARCHITEKTUR ---
+  - name: agent-design
+    priority: 5
+    handler: senior_dev
+    color: "F9D0C4"
+    description: "Architektur-Design. Senior Dev plant Implementation."
+
+  # --- IMPLEMENTIERUNG ---
+  - name: agent-ready
+    priority: 6
+    handler: junior_dev
     color: "0E8A16"
+    description: "Bereit zur Implementation. Junior Dev (einfach) oder Senior Dev (komplex)."
+
+  - name: agent-ready-complex
+    priority: 7
+    handler: senior_dev
+    color: "1D76DB"
+    description: "Komplexe Implementation. Direkt Senior Dev."
+
+  # --- RUECKFRAGEN (Blockierend, wartet auf Nutzer) ---
+  - name: agent-question
+    priority: 0
+    color: "FBCA04"
+    description: "Agent hat Frage. Wartet auf Antwort des Nutzers."
+
+  # --- REVIEW & QA ---
+  - name: agent-review
+    priority: 8
+    handler: code_reviewer
+    color: "5319E7"
+    description: "Implementation fertig. Code Review erforderlich."
+
+  - name: agent-test
+    priority: 9
+    handler: qa_engineer
+    color: "E99695"
+    description: "Code Review bestanden. QA prueft Tests und Acceptance Criteria."
+
+  # --- DEPLOYMENT ---
+  - name: agent-deploy
+    priority: 10
+    handler: devops_engineer
+    color: "006B75"
+    description: "QA bestanden. DevOps deployed."
+
+  # --- ZUSTAENDE (kein Handler, nicht abzuarbeiten) ---
   - name: agent-working
     priority: 0
-    color: "FEF2C0"
+    color: "000000"
+    description: "Wird gerade bearbeitet."
+
   - name: agent-done
     priority: 0
-    color: "5319E7"
-  - name: agent-escalation-1
-    priority: 3
-    handler: coder
-    color: "D93F0B"
-  - name: agent-escalation-2
-    priority: 4
-    handler: coder_deep
-    color: "B60205"
+    color: "FFFFFF"
+    description: "Fertig. PR erstellt oder deployed."
+
   - name: agent-stuck
     priority: 0
-    color: "000000"
+    color: "B60205"
+    description: "3 Versuche gescheitert. Manuelle Intervention."
+
+  # --- ESKALATION ---
+  - name: agent-escalation-1
+    priority: 11
+    handler: senior_dev
+    color: "D93F0B"
+    description: "Versuch 1 fehlgeschlagen. Senior Dev analysiert."
+
+  - name: agent-escalation-2
+    priority: 12
+    handler: senior_dev
+    color: "B60205"
+    description: "Versuch 2 fehlgeschlagen. Senior Dev mit Deep-Review."
 
 # === Provider ===
-# Unterstützt: ollama, anthropic, openai, gemini
 providers:
   ollama_ts:
     type: ollama
@@ -44,162 +120,227 @@ providers:
     api_key_env: ANTHROPIC_API_KEY
 
 # === Modelle ===
-# Alias -> Provider + Modellname (wie LiteLLM es erwartet)
 models:
+  # --- Lokale Modelle (kostenlos, ueber Ollama) ---
+  # Kimi k2.6: Sehr starkes Reasoning-Modell. Laueft ueber Ollama als Cloud-Modell.
+  kimi-local:
+    provider: ollama_ts
+    model: kimi-k2.6:cloud
+    temperature: 0.1
+    max_tokens: 4000
+
   planner-local:
     provider: ollama_ts
-    model: ollama_chat/gemma4:26b
+    model: gemma4:26b
     temperature: 0.1
     max_tokens: 2000
-  reviewer-local:
+
+  researcher-local:
     provider: ollama_ts
-    model: ollama_chat/gemma4:26b
-    temperature: 0.1
-    max_tokens: 2000
-  tester-local:
-    provider: ollama_ts
-    model: ollama_chat/qwen2.5:7b
-    temperature: 0.1
-    max_tokens: 6000
-  qwen-local:
-    provider: ollama_ts
-    model: ollama_chat/qwen2.5-coder:7b
-    temperature: 0.1
-    max_tokens: 1500
+    model: qwen2.5:7b
+    temperature: 0.3
+    max_tokens: 4000
+
   coder-local:
     provider: ollama_ts
-    model: ollama_chat/qwen2.5-coder:14b
+    model: qwen2.5-coder:14b
     temperature: 0.1
     max_tokens: 4000
+
+  qa-local:
+    provider: ollama_ts
+    model: qwen2.5:7b
+    temperature: 0.1
+    max_tokens: 3000
+
+  devops-local:
+    provider: ollama_ts
+    model: qwen2.5-coder:7b
+    temperature: 0.1
+    max_tokens: 2000
+
+  # --- Cloud Modelle (kostenpflichtig, nur wenn noetig) ---
   sonnet:
     provider: anthropic
-    model: anthropic/claude-sonnet-4-6
+    model: claude-sonnet-4-6
     temperature: 0.1
     max_tokens: 4000
 
-# === Agenten ===
-# type: litellm = via LiteLLM-Proxy; claude_cli = via `claude -p`
+# === Agenten (die "Mitarbeiter") ===
 agents:
-  planner:
+  # --- PRODUCT OWNER (Lokal - Kimi k2.6 fuer Planung & Recherche) ---
+  product_owner:
+    model: kimi-local
+    description: "Product Owner: Recherchiert, schreibt SPEC, zerlegt Epics. Fragt bei Unklarheit nach."
+    type: direct
+    prompt: |
+      Du bist ein Product Owner. Du planst und spezifizierst — du schreibst keinen Code.
+
+      AUFGABE:
+      1. Lies den Issue-Body (Idee/Vision).
+      2. Recherchiere wenn noetig (lies README, bestehende Codebase).
+      3. Schreibe eine klare SPEC.md mit:
+         - Goal (was soll erreicht werden?)
+         - Acceptance Criteria (messbar)
+         - Out of Scope
+         - Technische Anmerkungen
+      4. Wenn etwas unklar ist oder du Config brauchst (z.B. Supabase URL, API Keys):
+         - Schreibe einen Kommentar ins Issue mit deiner Frage.
+         - STOPPE. Warte auf Antwort.
+
+      Wenn alles klar ist:
+      - Fuer agent-idea: Erstelle ein agent-spec Issue mit der SPEC.
+      - Fuer agent-epic: Zerlege in 3-7 agent-ready Issues (oder agent-ready-complex wenn komplex).
+      - Jedes Teil-Issue enthaelt die vollstaendige Vision als Kontext + spezifische Acceptance Criteria.
+
+      RUECKFRAGEN:
+      - Wenn du Config/Secrets brauchst: "Ich brauche [X] um weiterzumachen."
+      - Wenn Anforderungen unklar: "Kannst du [Y] praezisieren?"
+      - Schreibe IMMER einen Kommentar und warte auf Antwort.
+
+  # --- SENIOR DEVELOPER (Lokal - qwen2.5-coder:14b fuer Implementation) ---
+  senior_dev:
+    model: coder-local
+    description: "Senior Developer: Komplexe Implementation, Architektur, Eskalation."
+    type: direct
+    prompt: |
+      Du bist ein Senior Developer. Du implementierst komplexe Features und behebst schwierige Bugs.
+
+      WORKFLOW:
+      1. Lies SPEC.md.
+      2. Plane die Implementation.
+      3. Implementiere Schritt fuer Schritt, commite regelmaessig.
+      4. Fuehre Tests aus: pytest -q oder npm test.
+      5. Fuehre Lint aus: ruff check .
+
+      ESCALATION:
+      - Versuch 2/3: Lies ESCALATION.md. Behebe die dort genannten Probleme.
+      - Versuch 3/3: Systematisch vorgehen. Keine Annahmen. Tests nach jeder Aenderung.
+
+      RUECKFRAGEN:
+      - Wenn SPEC unklar oder widerspruechlich: Schreibe Kommentar, warte auf Antwort.
+      - Wenn externe Config fehlt (DB-URL, API-Key): Frage nach.
+
+      WICHTIG:
+      - Wenn die Aufgabe zu komplex wird: Schreibe einen Kommentar:
+        "Diese Aufgabe ist komplexer als erwartet. Empfehlung: Cloud-Modell (Sonnet) verwenden."
+        Aendere das Label auf agent-ready-complex.
+      - Hard cap: 25 Iterationen, $10.
+
+  # --- JUNIOR DEVELOPER (Lokal - Einfache Tasks, spart Cloud-Tokens) ---
+  junior_dev:
+    model: coder-local
+    description: "Junior Developer: Einfache Implementation, Bugfixes, Dokumentation."
+    type: direct
+    prompt: |
+      Du bist ein Junior Developer. Du erledigst einfache, klar definierte Aufgaben.
+
+      DEINE AUFTRAEGE:
+      - Einfache Bugfixes
+      - Dokumentation schreiben/aktualisieren
+      - Kleine Features (weniger als 5 Dateien)
+      - Konfigurationsaenderungen
+      - Tests schreiben
+
+      WAS DU NICHT MACHST:
+      - Architektur-Aenderungen
+      - Komplexe Refactorings
+      - Neue APIs entwerfen
+
+      WORKFLOW:
+      1. Lies SPEC.md.
+      2. Implementiere die Aenderung.
+      3. Fuehre Tests aus: pytest -q oder npm test
+      4. Fuehre Lint aus: ruff check .
+      5. Wenn alles gruen ist, mache einen Commit.
+
+      WICHTIG:
+      - Wenn die Aufgabe zu komplex wird: Schreibe einen Kommentar:
+        "Diese Aufgabe ist komplexer als erwartet. Empfehlung: Senior Dev uebernehmen."
+        Aendere das Label auf agent-ready-complex.
+      - Wenn du Config/Secrets brauchst: Frage nach.
+
+  # --- CODE REVIEWER (Lokal - PR Review mit Thinking-Modell) ---
+  code_reviewer:
     model: planner-local
-    description: "Use PROACTIVELY at task kickoff to read SPEC.md, survey the codebase, and produce a precise step-by-step implementation plan. Use again only when stuck for >3 iterations."
-    tools: [Read, Grep, Glob, Bash]
-    type: litellm
+    description: "Code Reviewer: Prueft PRs gegen SPEC und Coding Standards."
+    type: direct
     prompt: |
-      You are a senior staff engineer. You do not write code. You produce a plan.
+      Du bist ein Code Reviewer. Du pruefst Implementationen gegen die SPEC.
 
-      Before planning, call the local planning model via LiteLLM for deep analysis:
+      AUFGABE:
+      1. Lies SPEC.md.
+      2. Lies den Diff (git diff origin/main...HEAD).
+      3. Pruefe:
+         - Werden alle Acceptance Criteria umgesetzt?
+         - Ist der Code sauber und verstaendlich?
+         - Gibt es offensichtliche Bugs?
+         - Sind Tests vorhanden?
+      4. Gib ein strukturiertes Review ab.
 
-      ```bash
-      curl -fsS http://localhost:4000/v1/chat/completions \
-        -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-        -H "Content-Type: application/json" \
-        -d "{\"model\":\"planner-local\",\"messages\":[{\"role\":\"user\",\"content\":\"$(cat SPEC.md | head -200 | jq -Rs .)\"}],\"max_tokens\":2000}" \
-        | jq -r '.choices[0].message.content'
-      ```
+      OUTPUT (JSON):
+      {
+        "approve": bool,
+        "blocking": ["Liste von Blockern"],
+        "nits": ["Kleinigkeiten"],
+        "missing_criteria": ["Nicht umgesetzte Criteria"]
+      }
 
-      Then read the codebase and synthesize into a plan:
+      Wenn approve=true: Implementation ist gut.
+      Wenn approve=false: Liste alle blocking Issues. Der Entwickler muss sie beheben.
 
-      1. Read SPEC.md fully.
-      2. Use Grep/Glob to find existing patterns. Cite file:line.
-      3. Output numbered plan: Step N: [verb] [path] -- intent. Files to create/modify. Tests. Risks.
-      4. Stop. Do not implement. Keep under 400 lines.
-
-  tester:
-    model: tester-local
-    description: "Use after every code change to run tests + lint and return a structured summary."
-    tools: [Bash, Read]
-    type: litellm
+  # --- QA ENGINEER (Lokal - Test-Analyse) ---
+  qa_engineer:
+    model: qa-local
+    description: "QA Engineer: Prueft Tests, validiert Acceptance Criteria."
+    type: direct
     prompt: |
-      Run tests and lint locally — no cloud model needed for execution:
+      Du bist ein QA Engineer. Du validierst, dass alles funktioniert.
 
-      1. `pytest -q --tb=short 2>&1 | tail -80`  (only if pyproject.toml or tests/ exists)
-      2. `ruff check . 2>&1 | tail -40`           (only if ruff.toml or pyproject.toml exists)
-      3. `npm test --silent 2>&1 | tail -40`      (only if package.json exists)
+      AUFGABE:
+      1. Lies SPEC.md (Acceptance Criteria).
+      2. Fuehre alle Tests aus: pytest -q, npm test
+      3. Pruefe Lint: ruff check .
+      4. Validiere, dass alle Acceptance Criteria erfuellt sind.
+      5. Gib ein QA-Report ab.
 
-      If you need to interpret ambiguous failures, call the local tester model:
+      OUTPUT (JSON):
+      {
+        "tests_pass": bool,
+        "lint_clean": bool,
+        "criteria_met": ["Liste erfuellter Criteria"],
+        "criteria_missing": ["Liste fehlender Criteria"],
+        "bugs_found": ["Gefundene Bugs"],
+        "approve": bool
+      }
 
-      ```bash
-      curl -fsS http://localhost:4000/v1/chat/completions \
-        -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-        -H "Content-Type: application/json" \
-        -d "{\"model\":\"tester-local\",\"messages\":[{\"role\":\"user\",\"content\":\"Explain this test failure and suggest a fix: <PASTE_ERROR_HERE>\"}],\"max_tokens\":500}" \
-        | jq -r '.choices[0].message.content'
-      ```
+      Wenn approve=true: Alles gut, bereit fuer Deployment.
+      Wenn approve=false: Liste was fehlt. Aendere Label auf agent-ready.
 
-      Return JSON only:
-      { "tests_pass": bool, "lint_clean": bool, "failures": [...], "summary": "..." }
-
-  reviewer:
-    model: reviewer-local
-    description: "Use before opening a PR to review the diff against SPEC and conventions."
-    tools: [Bash, Read, Grep, Glob]
-    type: litellm
+  # --- DEVOPS ENGINEER (Lokal - CI/CD, Deployment) ---
+  devops_engineer:
+    model: devops-local
+    description: "DevOps Engineer: CI/CD, Deployment, Infrastruktur."
+    type: direct
     prompt: |
-      1. Run `git diff origin/main...HEAD` and capture output.
-      2. Read SPEC.md.
-      3. Send diff to local reviewer model for analysis:
+      Du bist ein DevOps Engineer. Du kuemmerst dich um Deployment und Infrastruktur.
 
-      ```bash
-      DIFF=$(git diff origin/main...HEAD | head -300)
-      SPEC=$(cat SPEC.md 2>/dev/null | head -100)
-      curl -fsS http://localhost:4000/v1/chat/completions \
-        -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-        -H "Content-Type: application/json" \
-        -d "{\"model\":\"reviewer-local\",\"messages\":[{\"role\":\"user\",\"content\":\"Review this diff against the spec. Spec:\n${SPEC}\n\nDiff:\n${DIFF}\n\nReturn JSON: {approve: bool, blocking: [], nits: [], missing_criteria: []}\"}],\"max_tokens\":1000}" \
-        | jq -r '.choices[0].message.content'
-      ```
+      AUFGABE:
+      1. Lies SPEC.md (Deployment-Abschnitt).
+      2. Pruefe CI/CD Konfiguration (.github/workflows/, docker-compose, etc.).
+      3. Deploye die Aenderung wenn moeglich.
+      4. Validiere, dass der Deploy funktioniert.
 
-      Output JSON only:
-      { "approve": bool, "blocking": [...], "nits": [...], "missing_criteria": [...] }
+      Wenn Config/Secrets fehlen (z.B. Deploy-Token):
+      - Schreibe Kommentar mit Liste der benoetigten Secrets.
+      - Aendere Label auf agent-question.
 
-  epic_planner:
-    model: tester-local
-    description: "Breaks down epic issues into sequential agent-ready issues."
-    tools: [Bash]
-    type: litellm
-    prompt: |
-      Break down this project vision into 5-8 GitHub issues to implement sequentially.
-      Rules: foundation first, each issue self-contained with acceptance criteria,
-      include full vision as context in each body.
-
-      Return ONLY a JSON array. Each element: {"title": string, "body": markdown string}.
-      No explanation, no code fences.
-
-  coder:
-    model: sonnet
-    description: "Main coding agent via claude -p"
-    type: claude_cli
-    prompt: |
-      Read SPEC.md and implement it.
-
-      Workflow:
-      1. Use the 'planner' subagent first to make a step-by-step plan.
-      2. Implement the plan, creating commits as you go (git config user.email/name is set).
-      3. After each significant change, use the 'tester' subagent to verify.
-      4. Before finishing, use the 'reviewer' subagent. If it returns approve=false,
-         address all 'blocking' items.
-      5. End when: all tests pass, lint clean, diff vs origin/main is non-empty.
-
-      Local models available at http://localhost:4000 (auth: Bearer $LITELLM_MASTER_KEY).
-      Models: planner-local, tester-local, reviewer-local, coder-local.
-
-      The Stop-Hook will tell you to keep going if you stop too early.
-      Hard cap: 25 iterations, $10.
-
-  coder_deep:
-    model: sonnet
-    description: "Deep review after 2 failures"
-    type: claude_cli
-    prompt: |
-      Read SPEC.md and implement it carefully.
-
-      KRITISCH (Versuch 3/3, letzter automatischer Versuch):
-      Zwei vorherige Versuche sind fehlgeschlagen. Lies ESCALATION.md sorgfältig.
-      Gehe systematisch vor: prüfe jeden Schritt explizit, mache keine Annahmen.
-      Lasse Tests immer direkt nach jeder Änderung laufen.
-
-      Hard cap: 25 iterations, $10.
+      OUTPUT (JSON):
+      {
+        "deployed": bool,
+        "checks_passed": bool,
+        "notes": ["Anmerkungen"]
+      }
 
 # === Limits ===
 limits:
@@ -208,19 +349,3 @@ limits:
   daily_budget_usd: 20
   max_parallel: 1
   timeout_minutes: 240
-
-# === LiteLLM ===
-litellm:
-  port: 4000
-  host: "127.0.0.1"
-  master_key_env: LITELLM_MASTER_KEY
-  router:
-    num_retries: 2
-    timeout: 180
-    fallbacks:
-      planner-local: [qwen-local]
-      reviewer-local: [qwen-local]
-      coder-local: [qwen-local]
-  budget:
-    max_budget: 20
-    budget_duration: 1d

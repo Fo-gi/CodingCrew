@@ -8,7 +8,10 @@ build/
 .mypy_cache/
 .ruff_cache/
 .agent/
+.venv/
+venv/
 worktrees/
+workspace/
 logs/
 *.log
 .DS_Store
