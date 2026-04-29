@@ -3,7 +3,7 @@ set -euo pipefail
 
 echo "=== CodingCrew Installation ==="
 
-REPO_DIR="$HOME/CodingCrew"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$REPO_DIR/.venv"
 
 # 1. Runtime-Verzeichnisse anlegen
