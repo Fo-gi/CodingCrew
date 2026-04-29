@@ -1,0 +1,20 @@
+[Unit]
+Description=CodingCrew orchestrator
+After=network.target litellm.service
+Requires=litellm.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=%h/CodingCrew
+EnvironmentFile=%h/CodingCrew/.env
+ExecStart=/bin/bash -lc 'python3 -m src.orchestrator'
+Restart=on-failure
+RestartSec=30
+RuntimeMaxSec=21600
+StandardOutput=append:%h/CodingCrew/logs/orchestrator.log
+StandardError=append:%h/CodingCrew/logs/orchestrator.log
+
+[Install]
+WantedBy=default.target
