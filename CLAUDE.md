@@ -26,12 +26,14 @@ crew.yaml
 
 | Agent | Model | Type | Role |
 |-------|-------|------|------|
-| `product_owner` | kimi-k2.6:cloud | direct | Research, SPEC writing, epic breakdown |
-| `senior_dev` | qwen2.5-coder:14b | direct | Complex implementation, architecture, escalation |
-| `junior_dev` | qwen2.5-coder:14b | direct | Simple bugs, docs, small features |
-| `code_reviewer` | gemma4:26b | direct | PR review against SPEC |
-| `qa_engineer` | qwen2.5:7b | direct | Test validation, acceptance criteria |
-| `devops_engineer` | qwen2.5-coder:7b | direct | CI/CD, deployment |
+| `product_owner` | coder-local (qwen2.5-coder:14b) | direct | Research, SPEC writing, epic breakdown |
+| `senior_dev` | coder-local | direct | Complex implementation, architecture, escalation |
+| `junior_dev` | coder-local | direct | Simple bugs, docs, small features |
+| `code_reviewer` | planner-local (gemma4:26b) | direct | PR review against SPEC |
+| `qa_engineer` | qa-local (qwen2.5:7b) | direct | Test validation, acceptance criteria |
+| `devops_engineer` | devops-local (qwen2.5-coder:7b) | direct | CI/CD, deployment |
+
+**Model fallback**: `kimi-local` (kimi-k2.6:cloud) wurde aufgrund instabiler JSON-Ausgaben durch `coder-local` ersetzt.
 
 ### Workflow pipeline (tags)
 
@@ -130,15 +132,39 @@ systemctl --user stop orchestrator.service
 
 # Watch logs live
 tail -f ~/CodingCrew/logs/orchestrator.log
+
+# Debug a specific issue run (while it's running)
+tail -f ~/CodingCrew/logs/issue-N-*.jsonl | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        d = json.loads(line)
+        if d.get('type') == 'assistant':
+            for b in d['message']['content']:
+                if b.get('type') == 'text': print(b['text'][:120])
+    except: pass
+"
+
+# Check Ollama models are reachable
+curl -s http://100.111.112.15:11434/api/tags | python3 -c "import sys,json; [print(m['name']) for m in json.load(sys.stdin)['models']]"
+
+# Fix stuck issue (remove ghost agent-working label)
+gh issue edit N --repo $(grep 'repo:' crew.yaml | head -1 | awk -F'"' '{print $2}') --remove-label agent-working
 ```
 
 ## Important non-obvious details
 
 - **No LiteLLM**: Direct HTTP to Ollama, SDK/HTTP to Anthropic. No `localhost:4000` proxy. Ollama lives on a Windows laptop via Tailscale at `http://100.111.112.15:11434` (configured in `crew.yaml`)
-- **Thinking models**: `gemma4:26b` is a thinking model. When calling it directly, its response may be in `reasoning_content` rather than `content`. The provider layer handles this in `_clean_content()`
+- **Ollama timeout**: Default was 180s, raised to 300s for kimi-k2.6:cloud which needs longer for JSON generation
+- **Thinking models**: `gemma4:26b` is a thinking model. Its response may be in `reasoning_content` rather than `content`. The provider layer handles this in `_clean_content()`. However, gemma4:26b does NOT reliably return JSON for the code_reviewer prompt — fallback skips review instead of looping
+- **Epic JSON parsing**: The naive regex `\[.*?\]` matched `[]` from Markdown checkboxes before the real JSON array. Fixed with a robust parser that tries `content.startswith('[')` first, then falls back to searching from the last `]` backward
+- **Label cleanup on success**: `agent-ready` was NOT being removed when an issue succeeded — causing the same issue to be picked up again. Fixed: `remove = ["agent-working", "agent-ready", "agent-ready-complex"]`
+- **PR already exists**: If a reviewed issue gets sent back to `agent-ready` and re-implements, `gh pr create` fails because the branch already has a PR. Fixed: check `gh pr view branch` before creating
 - **Agent state in worktrees**: Each run creates `~/CodingCrew/worktrees/agent/issue-N/`. Inside that worktree, `.agent/iter` tracks how many Stop-Hook iterations have run
 - **Git identity in worktrees**: The orchestrator sets `user.email = agent@localhost` and `user.name = "Claude Agent"` inside each worktree so commits don't fail
 - **Ghost label cleanup**: If an issue has `agent-working` but no log file was written in the last 5 minutes, the label is removed automatically
-- **Environment**: Orchestrator reads `.env` via `EnvironmentFile` in systemd. Required vars: `GITHUB_TOKEN`, and provider keys (e.g. `ANTHROPIC_API_KEY`) depending on config. Also `GH_TOKEN` for systemd `ExecStartPre` auth
+- **Environment**: Orchestrator reads `.env` via `EnvironmentFile` in systemd. Required vars: `GITHUB_TOKEN`, and provider keys (e.g. `ANTHROPIC_API_KEY`) depending on config
 - **Worktree reuse on escalation**: If `agent-escalation-1` or `-2` exists and the branch already exists, the orchestrator reuses the existing worktree (does not reset to `origin/main`). `ESCALATION.md` is committed into the branch
 - **Question handling**: The orchestrator checks `agent-question` issues first by looking at the latest comment author. If the last comment is from a human (not `github-actions[bot]` or `Claude Agent`), it moves the label back to `agent-ready`
+- **install.sh**: Uses `sed` to substitute `__REPO_DIR__` and `__HOME_DIR__` in the systemd template file, then does `stop + sleep 2 + start` instead of `restart` to avoid race conditions
+- **systemd double-start guard**: The orchestrator uses a lockfile at `~/CodingCrew/.orchestrator.lock` (flock) to prevent multiple instances. There was a bug where `systemctl --user restart` started a second process before the first exited — fixed by using `stop + sleep + start`
