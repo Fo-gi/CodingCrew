@@ -1,6 +1,6 @@
 # === GitHub ===
 github:
-  repo: "Fo-gi/ProjectBlue"
+  repo: "Fo-gi/TestRunThree"
   auto_create_repo: true
   auto_create_labels: true
 
@@ -170,7 +170,7 @@ models:
 agents:
   # --- PRODUCT OWNER (Lokal - Kimi k2.6 fuer Planung & Recherche) ---
   product_owner:
-    model: kimi-local
+    model: coder-local
     description: "Product Owner: Recherchiert, schreibt SPEC, zerlegt Epics. Fragt bei Unklarheit nach."
     type: direct
     prompt: |
@@ -192,6 +192,17 @@ agents:
       - Fuer agent-idea: Erstelle ein agent-spec Issue mit der SPEC.
       - Fuer agent-epic: Zerlege in 3-7 agent-ready Issues (oder agent-ready-complex wenn komplex).
       - Jedes Teil-Issue enthaelt die vollstaendige Vision als Kontext + spezifische Acceptance Criteria.
+
+      OUTPUT FORMAT (fuer agent-epic):
+      Du MUSST ein JSON-Array zurueckgeben. Mindestens 3, maximal 7 Teil-Issues.
+      Beispiel:
+      ```json
+      [
+        {"title": "Setup Projektstruktur", "body": "## Ziel\nSetup...\n\n## Acceptance Criteria\n- [ ] ..."},
+        {"title": "Core Logik implementieren", "body": "## Ziel\n..."}
+      ]
+      ```
+      WICHTIG: Antworte NUR mit dem JSON-Array. Keine Erklärung, kein Markdown ausserhalb, keine Leerzeichen vor der oeffnenden Klammer.
 
       RUECKFRAGEN:
       - Wenn du Config/Secrets brauchst: "Ich brauche [X] um weiterzumachen."

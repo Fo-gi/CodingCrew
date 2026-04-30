@@ -28,12 +28,18 @@ from src.github import GitHubClient, GitHubSetup
 from src.providers import get_model_client
 
 
-LOCKFILE = Path("/tmp/codingcrew-orchestrator.lock")
+LOCKFILE = Path.home() / "CodingCrew" / ".orchestrator.lock"
 
 
 def acquire_lock() -> bool:
     """Nur eine Instanz erlauben."""
-    fd = os.open(str(LOCKFILE), os.O_CREAT | os.O_RDWR)
+    LOCKFILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(LOCKFILE), os.O_CREAT | os.O_RDWR)
+    except PermissionError:
+        # Falls altes Lockfile mit falschen Permissions existiert
+        LOCKFILE.unlink(missing_ok=True)
+        fd = os.open(str(LOCKFILE), os.O_CREAT | os.O_RDWR)
     try:
         fcntl.flock(fd, fcntl.LOCK_NB | fcntl.LOCK_EX)
         os.write(fd, str(os.getpid()).encode())
@@ -79,7 +85,12 @@ class Orchestrator:
 
     def _log(self, msg: str):
         ts = datetime.now(timezone.utc).isoformat()
-        print(f"[{ts}] {msg}")
+        line = f"[{ts}] {msg}\n"
+        print(line, end="")
+        log_file = self.log_dir / "orchestrator.log"
+        with open(log_file, "a") as f:
+            f.write(line)
+            f.flush()
 
     def _notify(self, msg: str):
         self._log(f"[notify] {msg}")
@@ -126,8 +137,11 @@ class Orchestrator:
 
         provider = get_model_client(agent_cfg.model, self.cfg)
 
+        system_msg = f"Du bist {agent_name}. {agent_cfg.description}"
+        if agent_cfg.prompt:
+            system_msg += f"\n\n{agent_cfg.prompt}"
         messages = [
-            {"role": "system", "content": f"Du bist {agent_name}. {agent_cfg.description}"},
+            {"role": "system", "content": system_msg},
             {"role": "user", "content": f"Issue: {issue['title']}\n\n{issue['body']}"}
         ]
 
@@ -218,12 +232,34 @@ class Orchestrator:
 
         try:
             result = await self._run_direct_agent(issue, "product_owner")
+            self._log(f"[epic-debug] Raw result (first 500 chars): {result[:500]!r}")
 
             content = re.sub(r"^```(json)?\n?", "", result)
             content = re.sub(r"\n?```$", "", content)
-            match = re.search(r"\[.*\]", content, re.DOTALL)
-            if match:
-                issues = json.loads(match.group())
+            content = content.strip()
+            # Versuche direkt JSON zu parsen (non-greedy regex fuer verschachtelte Arrays)
+            # Robuster JSON-Array-Parser (ignoriert Checkboxen [] und leere Arrays)
+            issues = None
+            if content.startswith('['):
+                # Versuche zuerst den gesamten Content als JSON
+                try:
+                    candidate = json.loads(content)
+                    if isinstance(candidate, list) and len(candidate) > 0:
+                        issues = candidate
+                except json.JSONDecodeError:
+                    # Fallback: suche den längsten validen JSON-Block von hinten
+                    last_bracket = content.rfind(']')
+                    while last_bracket > 0 and issues is None:
+                        try:
+                            candidate = json.loads(content[:last_bracket + 1])
+                            if isinstance(candidate, list) and len(candidate) > 0:
+                                issues = candidate
+                                break
+                        except json.JSONDecodeError:
+                            pass
+                        last_bracket = content.rfind(']', 0, last_bracket)
+
+            if issues:
                 total = len(issues)
                 for i, item in enumerate(issues, 1):
                     ititle = f"[{i}/{total}] {item['title']}"
@@ -236,10 +272,20 @@ class Orchestrator:
                 self.gh.edit_labels(num, remove=["agent-working", "agent-epic"], add=["agent-done"])
             else:
                 self._log(f"Epic #{num}: Keine JSON-Antwort gefunden.")
-                self.gh.edit_labels(num, remove=["agent-working"])
+                self.gh.edit_labels(num, remove=["agent-epic", "agent-working"], add=["agent-question"])
+                subprocess.run(
+                    ["gh", "issue", "comment", str(num), "--repo", self.cfg.github.repo,
+                     "--body", "Epic-Planung fehlgeschlagen: Das Modell hat kein gueltiges JSON zurueckgegeben. Bitte manuell zerlegen oder Prompt anpassen."],
+                    capture_output=True,
+                )
         except Exception as e:
             self._log(f"Epic #{num} Planung fehlgeschlagen: {e}")
-            self.gh.edit_labels(num, remove=["agent-working"])
+            self.gh.edit_labels(num, remove=["agent-epic", "agent-working"], add=["agent-question"])
+            subprocess.run(
+                ["gh", "issue", "comment", str(num), "--repo", self.cfg.github.repo,
+                 "--body", f"Epic-Planung fehlgeschlagen: {e}\n\nBitte manuell zerlegen oder Prompt anpassen."],
+                capture_output=True,
+            )
 
     async def _handle_research(self, issue: dict):
         """Product Owner: Recherche durchfuehren."""
@@ -311,10 +357,36 @@ class Orchestrator:
         try:
             result = await self._run_direct_agent(issue, "code_reviewer")
 
-            # JSON parsen
-            json_match = re.search(r"\{.*\}", result, re.DOTALL)
-            if json_match:
-                review = json.loads(json_match.group())
+            # JSON parsen (robust wie Epic-Handler)
+            review = None
+            content = re.sub(r"^```(json)?\n?", "", result)
+            content = re.sub(r"\n?```$", "", content)
+            content = content.strip()
+
+            if content.startswith('{'):
+                try:
+                    review = json.loads(content)
+                except json.JSONDecodeError:
+                    last_bracket = content.rfind('}')
+                    while last_bracket > 0 and review is None:
+                        try:
+                            review = json.loads(content[:last_bracket + 1])
+                        except json.JSONDecodeError:
+                            pass
+                        last_bracket = content.rfind('}', 0, last_bracket)
+
+            if review is None:
+                # Fallback: suche beliebiges JSON-Objekt
+                for m in re.finditer(r"\{.*?\}", content, re.DOTALL):
+                    try:
+                        candidate = json.loads(m.group())
+                        if isinstance(candidate, dict) and "approve" in candidate:
+                            review = candidate
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            if review:
                 approve = review.get("approve", False)
 
                 if approve:
@@ -335,8 +407,14 @@ class Orchestrator:
                     self.gh.edit_labels(num, remove=["agent-working", "agent-review"], add=["agent-ready"])
                     self._notify(f":x: #{num}: Code Review hat Blocker. Zurueck zur Implementation.")
             else:
-                self._log(f"Review #{num}: Kein JSON gefunden.")
-                self.gh.edit_labels(num, remove=["agent-working"])
+                self._log(f"Review #{num}: Kein JSON gefunden. Ueberspringe Review.")
+                subprocess.run(
+                    ["gh", "issue", "comment", str(num), "--repo", self.cfg.github.repo,
+                     "--body", f"## Code Review\n\n{result}\n\n*(Kein JSON-Format erkannt — ueberspringe automatisch.)*"],
+                    capture_output=True,
+                )
+                self.gh.edit_labels(num, remove=["agent-working", "agent-review"], add=["agent-test"])
+                self._notify(f":white_check_mark: #{num}: Review uebersprungen (kein JSON).")
         except Exception as e:
             self._log(f"[review] Fehler bei #{num}: {e}")
             self.gh.edit_labels(num, remove=["agent-working"])
@@ -548,6 +626,17 @@ class Orchestrator:
 
         ccode = await self._run_claude(wt, prompt, log)
 
+        # Falls claude -p Aenderungen gemacht aber nicht committed hat,
+        # committe sie automatisch (nur im Worktree, sicher).
+        r = subprocess.run(["git", "status", "--porcelain"], cwd=wt, capture_output=True, text=True)
+        if r.stdout.strip():
+            self._log(f"[auto-commit] #{num}: Uncommitted changes gefunden. Committe...")
+            subprocess.run(["git", "add", "-A"], cwd=wt, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"agent: Implementiere #{num} - {title[:50]}"],
+                cwd=wt, capture_output=True,
+            )
+
         if self._check_success(wt):
             subprocess.run(
                 ["git", "push", "-u", "origin", branch],
@@ -563,9 +652,19 @@ class Orchestrator:
             try:
                 pr_url = self.gh.create_pr("main", branch, f"[agent] {title}", pr_body)
             except RuntimeError:
-                pr_url = "PR konnte nicht erstellt werden"
+                # Pruefe ob PR bereits existiert
+                r = subprocess.run(
+                    ["gh", "pr", "view", branch, "--repo", self.cfg.github.repo,
+                     "--json", "url"],
+                    capture_output=True, text=True,
+                )
+                if r.returncode == 0:
+                    data = json.loads(r.stdout)
+                    pr_url = data.get("url", "PR existiert bereits")
+                else:
+                    pr_url = "PR konnte nicht erstellt werden"
 
-            remove = ["agent-working"]
+            remove = ["agent-working", "agent-ready", "agent-ready-complex"]
             if esc_level >= 1:
                 remove.append("agent-escalation-1")
             if esc_level >= 2:

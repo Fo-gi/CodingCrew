@@ -34,10 +34,11 @@ class OllamaProvider(BaseProvider):
 
         url = f"{self.config.base_url}/api/chat"
         try:
-            r = requests.post(url, json=payload, timeout=180)
+            r = requests.post(url, json=payload, timeout=300)
             r.raise_for_status()
             data = r.json()
-            content = data.get("message", {}).get("content", "")
+            msg = data.get("message", {})
+            content = msg.get("content", "") or msg.get("reasoning_content", "")
             return self._clean_content(content)
         except requests.exceptions.Timeout:
             raise RuntimeError(f"Ollama-Timeout bei {url}")

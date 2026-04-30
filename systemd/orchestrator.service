@@ -6,17 +6,17 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-WorkingDirectory=%h/CodingCrew
-Environment="HOME=%h"
-Environment="XDG_CONFIG_HOME=%h/.config"
-EnvironmentFile=%h/CodingCrew/.env
-ExecStartPre=/bin/bash -lc 'source %h/CodingCrew/.env && echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true'
-ExecStart=/bin/bash -lc '%h/CodingCrew/.venv/bin/python3 -m src.orchestrator'
+WorkingDirectory=__REPO_DIR__
+Environment="HOME=__HOME_DIR__"
+Environment="XDG_CONFIG_HOME=__HOME_DIR__/.config"
+EnvironmentFile=__REPO_DIR__/.env
+ExecStartPre=/bin/bash -lc 'source __REPO_DIR__/.env && echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null || true'
+ExecStart=__REPO_DIR__/.venv/bin/python3 -m src.orchestrator
 Restart=on-failure
 RestartSec=30
 RuntimeMaxSec=21600
-StandardOutput=append:%h/CodingCrew/logs/orchestrator.log
-StandardError=append:%h/CodingCrew/logs/orchestrator.log
+StandardOutput=append:__REPO_DIR__/logs/orchestrator.log
+StandardError=append:__REPO_DIR__/logs/orchestrator.log
 
 [Install]
 WantedBy=default.target

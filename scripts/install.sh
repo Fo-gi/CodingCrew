@@ -42,10 +42,13 @@ chmod +x "$REPO_DIR/src/hooks/"*.py
 # 6. systemd-Service
 echo "[5/5] systemd-Service installieren & starten..."
 mkdir -p "$HOME/.config/systemd/user"
-cp "$REPO_DIR/systemd/orchestrator.service" "$HOME/.config/systemd/user/"
+sed -e "s|__REPO_DIR__|$REPO_DIR|g" -e "s|__HOME_DIR__|$HOME|g" \
+    "$REPO_DIR/systemd/orchestrator.service" > "$HOME/.config/systemd/user/orchestrator.service"
 systemctl --user daemon-reload
 systemctl --user enable orchestrator.service
-systemctl --user restart orchestrator.service
+systemctl --user stop orchestrator.service 2>/dev/null || true
+sleep 2
+systemctl --user start orchestrator.service
 
 echo ""
 echo "=== Fertig ==="
