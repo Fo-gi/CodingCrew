@@ -1,0 +1,20 @@
+[Unit]
+Description=CodingCrew API Gateway
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+Environment="HOME=__HOME_DIR__"
+Environment="XDG_CONFIG_HOME=__HOME_DIR__/.config"
+EnvironmentFile=__REPO_DIR__/.env
+ExecStart=__REPO_DIR__/.venv/bin/uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:__REPO_DIR__/logs/api-gateway.log
+StandardError=append:__REPO_DIR__/logs/api-gateway.log
+
+[Install]
+WantedBy=default.target

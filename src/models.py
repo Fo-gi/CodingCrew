@@ -50,8 +50,6 @@ class TagConfig(BaseModel):
 
 class LimitsConfig(BaseModel):
     max_iterations: int = 25
-    task_budget_usd: float = 10.0
-    daily_budget_usd: float = 20.0
     max_parallel: int = 1
     timeout_minutes: int = 240
 

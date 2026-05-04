@@ -20,6 +20,10 @@ cloud = [
     "anthropic>=0.20",
     "openai>=1.0",
 ]
+api = [
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.1.0",

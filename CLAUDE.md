@@ -91,6 +91,32 @@ When an agent needs clarification (missing config, ambiguous requirements):
 7. On success → push branch, open PR, label moves to next stage (e.g. `agent-ready` → `agent-review`)
 8. On failure → escalate: `agent-escalation-1` → `agent-escalation-2` → `agent-stuck`
 
+### OllamaWorker Code-Generation
+
+`workers/ollama_worker.py` implements code generation for `junior_dev` and `senior_dev` agents:
+
+1. **Parse**: Markdown code blocks are parsed for `# file:` and `# shell` markers
+2. **Apply**: Files are written, shell commands executed (pip → venv)
+3. **Gitignore**: `.venv/`, `__pycache__/`, `.pytest_cache/` auto-added
+4. **Test**: `pytest -q` runs in venv
+5. **Lint**: `ruff check .` runs in venv
+6. **Commit**: Single commit on success
+
+**Prompt format** (in `crew.yaml` / `configs/*.yaml`):
+```markdown
+OUTPUT FORMAT (wichtig):
+Du MUSST Dateien als Markdown-Code-Bloecke zurueckgeben.
+Fuer Dateien: Schreibe in der ERSTEN ZEILE als Kommentar den Dateipfad.
+```python
+# file: app.py
+from flask import Flask
+```
+```bash
+# shell
+pip install flask pytest
+```
+```
+
 ### Hooks
 
 Both hooks are command-line programs that Claude Code executes via `settings.json` hooks:

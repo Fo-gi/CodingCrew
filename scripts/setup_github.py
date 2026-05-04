@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
-from src.config import load_config
+from src.models import CrewConfig
 from src.github.setup import GitHubSetup
+
+
+def load_config(config_path: str | None) -> CrewConfig:
+    """Load config from YAML file."""
+    import yaml
+    path = Path(config_path) if config_path else Path("crew.yaml")
+    return CrewConfig.load(path)
 
 
 def main():

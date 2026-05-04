@@ -1,0 +1,17 @@
+# CodingCrew Dependencies
+# Core
+pydantic>=2.0
+pyyaml>=6.0
+requests>=2.31
+
+# API (optional)
+fastapi>=0.109
+uvicorn[standard]>=0.27
+
+# Cloud Providers (optional)
+# anthropic>=0.20
+# openai>=1.0
+
+# Dev (optional)
+# pytest>=7.0
+# ruff>=0.1.0

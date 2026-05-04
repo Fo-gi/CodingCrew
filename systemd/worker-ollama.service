@@ -1,0 +1,23 @@
+[Unit]
+Description=CodingCrew Ollama Worker
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+Environment="HOME=__HOME_DIR__"
+Environment="XDG_CONFIG_HOME=__HOME_DIR__/.config"
+Environment="PYTHONPATH=__REPO_DIR__"
+EnvironmentFile=__REPO_DIR__/.env
+ExecStartPre=/bin/sleep 5
+# Starte Worker für alle Ollama-basierten Agents (junior_dev für Implementation)
+ExecStart=/bin/bash -c 'source __REPO_DIR__/.env && exec __REPO_DIR__/.venv/bin/python3 -c "import asyncio; from workers.ollama_worker import OllamaWorker; from src.models import CrewConfig; from pathlib import Path; config = CrewConfig.load(Path.home() / \x27CodingCrew\x27 / \x27crew.yaml\x27); worker = OllamaWorker(\x27junior_dev\x27, config); asyncio.run(worker.run())"'
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:__REPO_DIR__/logs/worker-ollama.log
+StandardError=append:__REPO_DIR__/logs/worker-ollama.log
+
+[Install]
+WantedBy=default.target

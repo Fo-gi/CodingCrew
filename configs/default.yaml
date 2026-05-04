@@ -1,12 +1,11 @@
-# === GitHub ===
+# Default Project Config - CodingCrew Multi-Projekt Support
+# Kopiere diese Datei und passe sie für jedes neue Projekt an.
+
 github:
-  repo: "Fo-gi/agent-playground"
+  repo: "Fo-gi/TestRunFour"
   auto_create_repo: true
   auto_create_labels: true
 
-# === Tags & Workflow ===
-# Priority: niedriger = frueher abgearbeitet.
-# 5 Rollen auf Ollama-Basis. Claude Pro nur bei Eskalation Stufe 3 (automatisch).
 tags:
   # --- INPUT: Du legst Issues mit diesen Tags an ---
   - name: agent-idea
@@ -21,7 +20,6 @@ tags:
     color: "BFD4F2"
     description: "Grosse Vision. Product Owner zerlegt in Teil-Issues."
 
-  # --- RECHERCHE & SPEZIFIKATION ---
   - name: agent-research
     priority: 3
     handler: product_owner
@@ -34,19 +32,17 @@ tags:
     color: "D4C5F9"
     description: "SPEC.md ist geschrieben, wartet auf Design."
 
-  # --- DESIGN & ARCHITEKTUR ---
   - name: agent-design
     priority: 5
     handler: senior_dev
     color: "F9D0C4"
     description: "Architektur-Design. Senior Dev plant Implementation."
 
-  # --- IMPLEMENTIERUNG ---
   - name: agent-ready
     priority: 6
     handler: junior_dev
     color: "0E8A16"
-    description: "Bereit zur Implementation. Junior Dev (einfach) oder Senior Dev (komplex)."
+    description: "Bereit zur Implementation. Junior Dev (einfach) oder Senior Dev."
 
   - name: agent-ready-complex
     priority: 7
@@ -54,13 +50,11 @@ tags:
     color: "1D76DB"
     description: "Komplexe Implementation. Direkt Senior Dev."
 
-  # --- RUECKFRAGEN (Blockierend, wartet auf Nutzer) ---
   - name: agent-question
     priority: 0
     color: "FBCA04"
     description: "Agent hat Frage. Wartet auf Antwort des Nutzers."
 
-  # --- REVIEW & QA ---
   - name: agent-review
     priority: 8
     handler: code_reviewer
@@ -72,6 +66,12 @@ tags:
     handler: qa_engineer
     color: "E99695"
     description: "Code Review bestanden. QA prueft Tests und Acceptance Criteria."
+
+  - name: agent-deploy
+    priority: 10
+    handler: devops_engineer
+    color: "006B75"
+    description: "QA bestanden. DevOps deployed."
 
   # --- ZUSTAENDE (kein Handler, nicht abzuarbeiten) ---
   - name: agent-working
@@ -87,9 +87,8 @@ tags:
   - name: agent-stuck
     priority: 0
     color: "B60205"
-    description: "Alle Versuche gescheitert. Manuelle Intervention."
+    description: "3 Versuche gescheitert. Manuelle Intervention."
 
-  # --- ESKALATION ---
   - name: agent-escalation-1
     priority: 11
     handler: senior_dev
@@ -102,13 +101,6 @@ tags:
     color: "B60205"
     description: "Versuch 2 fehlgeschlagen. Senior Dev mit Deep-Review."
 
-  - name: agent-escalation-3
-    priority: 13
-    handler: claude_fallback
-    color: "FF0000"
-    description: "Letzter automatischer Versuch mit Claude Pro."
-
-# === Provider ===
 providers:
   ollama_ts:
     type: ollama
@@ -117,58 +109,53 @@ providers:
     type: anthropic
     api_key_env: ANTHROPIC_API_KEY
 
-# === Modelle ===
 models:
-  # === Ollama Modelle (alle lokal, kostenlos) ===
+  kimi-local:
+    provider: ollama_ts
+    model: kimi-k2.6:cloud
+    temperature: 0.1
+    max_tokens: 4000
 
-  # Product Owner: qwen2.5:7b - schnell, gut fuer Text/Analyse
-  product_owner:
+  planner-local:
+    provider: ollama_ts
+    model: gemma4:26b
+    temperature: 0.1
+    max_tokens: 2000
+
+  researcher-local:
     provider: ollama_ts
     model: qwen2.5:7b
     temperature: 0.3
     max_tokens: 4000
 
-  # Junior Dev: qwen2.5-coder:7b - einfache Implementationen
-  junior_dev:
-    provider: ollama_ts
-    model: qwen2.5-coder:7b
-    temperature: 0.1
-    max_tokens: 4000
-
-  # Senior Dev: qwen2.5-coder:14b - komplexe Tasks
-  senior_dev:
+  coder-local:
     provider: ollama_ts
     model: qwen2.5-coder:14b
     temperature: 0.1
     max_tokens: 4000
 
-  # Reviewer: gemma4:26b - Thinking-Modell fuer gruendliche Reviews
-  code_reviewer:
-    provider: ollama_ts
-    model: gemma4:26b
-    temperature: 0.1
-    max_tokens: 3000
-
-  # QA: qwen2.5:7b - Test-Analyse
-  qa_engineer:
+  qa-local:
     provider: ollama_ts
     model: qwen2.5:7b
     temperature: 0.1
     max_tokens: 3000
 
-  # Claude Pro: nur fuer Eskalation Stufe 3 (Fallback)
-  claude_fallback:
+  devops-local:
+    provider: ollama_ts
+    model: qwen2.5-coder:7b
+    temperature: 0.1
+    max_tokens: 2000
+
+  sonnet:
     provider: anthropic
     model: claude-sonnet-4-6
     temperature: 0.1
     max_tokens: 4000
 
-# === Agenten (5 Rollen auf Ollama, 1 Fallback auf Claude) ===
 agents:
-  # === PRODUCT OWNER (Ollama: qwen2.5:7b) ===
   product_owner:
-    model: product_owner
-    description: "Product Owner: Recherchiert, schreibt SPEC, zerlegt Epics. Fragt bei Unklarheit nach."
+    model: coder-local
+    description: "Product Owner: Recherchiert, schreibt SPEC, zerlegt Epics."
     type: direct
     prompt: |
       Du bist ein Product Owner. Du planst und spezifizierst — du schreibst keinen Code.
@@ -191,19 +178,28 @@ agents:
 
       OUTPUT FORMAT (fuer agent-epic):
       Du MUSST ein JSON-Array zurueckgeben. Mindestens 3, maximal 7 Teil-Issues.
-      Beispiel:
-      ```json
-      [
-        {"title": "Setup Projektstruktur", "body": "## Ziel\nSetup...\n\n## Acceptance Criteria\n- [ ] ..."},
-        {"title": "Core Logik implementieren", "body": "## Ziel\n..."}
-      ]
-      ```
-      WICHTIG: Antworte NUR mit dem JSON-Array. Kein Markdown ausserhalb.
 
-  # === JUNIOR DEVELOPER (Ollama: qwen2.5-coder:7b) ===
+  senior_dev:
+    model: coder-local
+    description: "Senior Developer: Komplexe Implementation, Architektur, Eskalation."
+    type: claude_cli
+    prompt: |
+      Du bist ein Senior Developer. Du implementierst komplexe Features und behebst schwierige Bugs.
+
+      WORKFLOW:
+      1. Lies SPEC.md.
+      2. Plane die Implementation.
+      3. Implementiere Schritt fuer Schritt, commite regelmaessig.
+      4. Fuehre Tests aus: pytest -q oder npm test.
+      5. Fuehre Lint aus: ruff check .
+
+      ESCALATION:
+      - Versuch 2/3: Lies ESCALATION.md. Behebe die dort genannten Probleme.
+      - Versuch 3/3: Systematisch vorgehen. Keine Annahmen. Tests nach jeder Aenderung.
+
   junior_dev:
-    model: junior_dev
-    description: "Junior Developer: Einfache Implementation, Bugfixes, Dokumentation. Ein Commit am Ende."
+    model: coder-local
+    description: "Junior Developer: Einfache Implementation, Bugfixes, Dokumentation."
     type: direct
     prompt: |
       Du bist ein Junior Developer. Du erledigst einfache, klar definierte Aufgaben.
@@ -257,36 +253,8 @@ agents:
       - Kein Markdown-Text zwischen den Bloecken.
       - Wenn du Python-Tests schreibst, erstelle auch eine pyproject.toml mit [tool.pytest.ini_options] pythonpath = ["."].
 
-  # === SENIOR DEVELOPER (Ollama: qwen2.5-coder:14b) ===
-  senior_dev:
-    model: senior_dev
-    description: "Senior Developer: Komplexe Implementation, Architektur, Eskalation. Ein Commit am Ende."
-    type: direct
-    prompt: |
-      Du bist ein Senior Developer. Du implementierst komplexe Features und behebst schwierige Bugs.
-
-      WORKFLOW:
-      1. Lies SPEC.md.
-      2. Plane die Implementation.
-      3. Implementiere Schritt fuer Schritt.
-      4. Teste nach jedem groesseren Schritt.
-      5. Wenn alles gruen: EIN Commit am Ende.
-
-      COMMIT-REGEL:
-      - Nicht nach jedem Step committen!
-      - Erst wenn ALLE Tests gruenn sind: git commit -am "Implementiere Feature"
-
-      ESCALATION:
-      - Versuch 2/3: Lies ESCALATION.md. Behebe die dort genannten Probleme.
-      - Versuch 3/3: Systematisch vorgehen. Keine Annahmen. Tests nach jeder Aenderung.
-
-      RUECKFRAGEN:
-      - Wenn SPEC unklar: Schreibe Kommentar, warte auf Antwort.
-      - Wenn externe Config fehlt: Frage nach.
-
-  # === CODE REVIEWER (Ollama: gemma4:26b, Thinking) ===
   code_reviewer:
-    model: code_reviewer
+    model: planner-local
     description: "Code Reviewer: Prueft PRs gegen SPEC und Coding Standards."
     type: direct
     prompt: |
@@ -310,12 +278,8 @@ agents:
         "missing_criteria": ["Nicht umgesetzte Criteria"]
       }
 
-      Wenn approve=true: Implementation ist gut.
-      Wenn approve=false: Liste alle blocking Issues.
-
-  # === QA ENGINEER (Ollama: qwen2.5:7b) ===
   qa_engineer:
-    model: qa_engineer
+    model: qa-local
     description: "QA Engineer: Prueft Tests, validiert Acceptance Criteria."
     type: direct
     prompt: |
@@ -338,39 +302,19 @@ agents:
         "approve": bool
       }
 
-      Wenn approve=true: Alles gut.
-      Wenn approve=false: Liste was fehlt.
-
-  # === CLAUDE FALLBACK (nur Eskalation Stufe 3) ===
-  claude_fallback:
-    model: claude_fallback
-    description: "Letzter automatischer Versuch nach 3 fehlgeschlagenen Ollama-Versuchen."
-    type: claude_cli
+  devops_engineer:
+    model: devops-local
+    description: "DevOps Engineer: CI/CD, Deployment, Infrastruktur."
+    type: direct
     prompt: |
-      KRITISCHER LETZTER VERSUCH (Versuch 4/4):
+      Du bist ein DevOps Engineer. Du kuemmerst dich um Deployment und Infrastruktur.
 
-      Drei vorherige Versuche mit Ollama sind fehlgeschlagen.
-      Du bist die letzte automatische Instanz bevor manuelle Intervention erfolgt.
+      AUFGABE:
+      1. Lies SPEC.md (Deployment-Abschnitt).
+      2. Pruefe CI/CD Konfiguration (.github/workflows/, docker-compose, etc.).
+      3. Deploye die Aenderung wenn moeglich.
+      4. Validiere, dass der Deploy funktioniert.
 
-      WORKFLOW:
-      1. Lies SPEC.md sorgfaeltig.
-      2. Lies ESCALATION.md — dort stehen alle bisherigen Fehler und Analysen.
-      3. Gehe extrem systematisch vor:
-         - Mache keine Annahmen
-         - Teste nach JEDER Aenderung
-         - Commite nur wenn ALLE Tests gruen sind
-      4. Wenn du stecken bleibst: Schreibe genau was das Problem ist.
-
-      COMMIT-REGEL:
-      - EIN Commit am Ende wenn alles funktioniert.
-      - Nicht vorher committen!
-
-      WICHTIG:
-      - Dies ist der LETZTE automatische Versuch.
-      - Wenn du scheiterst: Das Issue wird auf 'agent-stuck' gesetzt.
-      - Schreibe eine detaillierte Fehleranalyse falls du nicht weiterkommst.
-
-# === Limits ===
 limits:
   max_iterations: 25
   max_parallel: 1

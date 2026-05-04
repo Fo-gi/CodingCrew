@@ -1,0 +1,286 @@
+# Default Project Config - CodingCrew Multi-Projekt Support
+# Kopiere diese Datei und passe sie für jedes neue Projekt an.
+
+github:
+  repo: "Fo-gi/TestRunFour"
+  auto_create_repo: true
+  auto_create_labels: true
+
+tags:
+  # --- INPUT: Du legst Issues mit diesen Tags an ---
+  - name: agent-idea
+    priority: 1
+    handler: product_owner
+    color: "C2E0C6"
+    description: "Rohe Idee/Vision. Product Owner recherchiert und erstellt SPEC."
+
+  - name: agent-epic
+    priority: 2
+    handler: product_owner
+    color: "BFD4F2"
+    description: "Grosse Vision. Product Owner zerlegt in Teil-Issues."
+
+  - name: agent-research
+    priority: 3
+    handler: product_owner
+    color: "FEF2C0"
+    description: "Offene Recherche/Anforderungsklärung."
+
+  - name: agent-spec
+    priority: 4
+    handler: product_owner
+    color: "D4C5F9"
+    description: "SPEC.md ist geschrieben, wartet auf Design."
+
+  - name: agent-design
+    priority: 5
+    handler: senior_dev
+    color: "F9D0C4"
+    description: "Architektur-Design. Senior Dev plant Implementation."
+
+  - name: agent-ready
+    priority: 6
+    handler: junior_dev
+    color: "0E8A16"
+    description: "Bereit zur Implementation. Junior Dev (einfach) oder Senior Dev."
+
+  - name: agent-ready-complex
+    priority: 7
+    handler: senior_dev
+    color: "1D76DB"
+    description: "Komplexe Implementation. Direkt Senior Dev."
+
+  - name: agent-question
+    priority: 0
+    color: "FBCA04"
+    description: "Agent hat Frage. Wartet auf Antwort des Nutzers."
+
+  - name: agent-review
+    priority: 8
+    handler: code_reviewer
+    color: "5319E7"
+    description: "Implementation fertig. Code Review erforderlich."
+
+  - name: agent-test
+    priority: 9
+    handler: qa_engineer
+    color: "E99695"
+    description: "Code Review bestanden. QA prueft Tests und Acceptance Criteria."
+
+  - name: agent-deploy
+    priority: 10
+    handler: devops_engineer
+    color: "006B75"
+    description: "QA bestanden. DevOps deployed."
+
+  # --- ZUSTAENDE (kein Handler, nicht abzuarbeiten) ---
+  - name: agent-working
+    priority: 0
+    color: "000000"
+    description: "Wird gerade bearbeitet."
+
+  - name: agent-done
+    priority: 0
+    color: "FFFFFF"
+    description: "Fertig. PR erstellt oder deployed."
+
+  - name: agent-stuck
+    priority: 0
+    color: "B60205"
+    description: "3 Versuche gescheitert. Manuelle Intervention."
+
+  - name: agent-escalation-1
+    priority: 11
+    handler: senior_dev
+    color: "D93F0B"
+    description: "Versuch 1 fehlgeschlagen. Senior Dev analysiert."
+
+  - name: agent-escalation-2
+    priority: 12
+    handler: senior_dev
+    color: "B60205"
+    description: "Versuch 2 fehlgeschlagen. Senior Dev mit Deep-Review."
+
+providers:
+  ollama_ts:
+    type: ollama
+    base_url: "http://100.111.112.15:11434"
+  anthropic:
+    type: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+
+models:
+  kimi-local:
+    provider: ollama_ts
+    model: kimi-k2.6:cloud
+    temperature: 0.1
+    max_tokens: 4000
+
+  planner-local:
+    provider: ollama_ts
+    model: gemma4:26b
+    temperature: 0.1
+    max_tokens: 2000
+
+  researcher-local:
+    provider: ollama_ts
+    model: qwen2.5:7b
+    temperature: 0.3
+    max_tokens: 4000
+
+  coder-local:
+    provider: ollama_ts
+    model: qwen2.5-coder:14b
+    temperature: 0.1
+    max_tokens: 4000
+
+  qa-local:
+    provider: ollama_ts
+    model: qwen2.5:7b
+    temperature: 0.1
+    max_tokens: 3000
+
+  devops-local:
+    provider: ollama_ts
+    model: qwen2.5-coder:7b
+    temperature: 0.1
+    max_tokens: 2000
+
+  sonnet:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    temperature: 0.1
+    max_tokens: 4000
+
+agents:
+  product_owner:
+    model: coder-local
+    description: "Product Owner: Recherchiert, schreibt SPEC, zerlegt Epics."
+    type: direct
+    prompt: |
+      Du bist ein Product Owner. Du planst und spezifizierst — du schreibst keinen Code.
+
+      AUFGABE:
+      1. Lies den Issue-Body (Idee/Vision).
+      2. Recherchiere wenn noetig (lies README, bestehende Codebase).
+      3. Schreibe eine klare SPEC.md mit:
+         - Goal (was soll erreicht werden?)
+         - Acceptance Criteria (messbar)
+         - Out of Scope
+         - Technische Anmerkungen
+      4. Wenn etwas unklar ist oder du Config brauchst:
+         - Schreibe einen Kommentar ins Issue mit deiner Frage.
+         - STOPPE. Warte auf Antwort.
+
+      Wenn alles klar ist:
+      - Fuer agent-idea: Erstelle ein agent-spec Issue mit der SPEC.
+      - Fuer agent-epic: Zerlege in 3-7 agent-ready Issues.
+
+      OUTPUT FORMAT (fuer agent-epic):
+      Du MUSST ein JSON-Array zurueckgeben. Mindestens 3, maximal 7 Teil-Issues.
+
+  senior_dev:
+    model: coder-local
+    description: "Senior Developer: Komplexe Implementation, Architektur, Eskalation."
+    type: claude_cli
+    prompt: |
+      Du bist ein Senior Developer. Du implementierst komplexe Features und behebst schwierige Bugs.
+
+      WORKFLOW:
+      1. Lies SPEC.md.
+      2. Plane die Implementation.
+      3. Implementiere Schritt fuer Schritt, commite regelmaessig.
+      4. Fuehre Tests aus: pytest -q oder npm test.
+      5. Fuehre Lint aus: ruff check .
+
+      ESCALATION:
+      - Versuch 2/3: Lies ESCALATION.md. Behebe die dort genannten Probleme.
+      - Versuch 3/3: Systematisch vorgehen. Keine Annahmen. Tests nach jeder Aenderung.
+
+  junior_dev:
+    model: coder-local
+    description: "Junior Developer: Einfache Implementation, Bugfixes, Dokumentation."
+    type: direct
+    prompt: |
+      Du bist ein Junior Developer. Du erledigst einfache, klar definierte Aufgaben.
+
+      DEINE AUFTRAEGE:
+      - Einfache Bugfixes
+      - Dokumentation schreiben/aktualisieren
+      - Kleine Features (weniger als 5 Dateien)
+      - Konfigurationsaenderungen
+      - Tests schreiben
+
+      WAS DU NICHT MACHST:
+      - Architektur-Aenderungen
+      - Komplexe Refactorings
+      - Neue APIs entwerfen
+
+  code_reviewer:
+    model: planner-local
+    description: "Code Reviewer: Prueft PRs gegen SPEC und Coding Standards."
+    type: direct
+    prompt: |
+      Du bist ein Code Reviewer. Du pruefst Implementationen gegen die SPEC.
+
+      AUFGABE:
+      1. Lies SPEC.md.
+      2. Lies den Diff (git diff origin/main...HEAD).
+      3. Pruefe:
+         - Werden alle Acceptance Criteria umgesetzt?
+         - Ist der Code sauber und verstaendlich?
+         - Gibt es offensichtliche Bugs?
+         - Sind Tests vorhanden?
+      4. Gib ein strukturiertes Review ab.
+
+      OUTPUT (JSON):
+      {
+        "approve": bool,
+        "blocking": ["Liste von Blockern"],
+        "nits": ["Kleinigkeiten"],
+        "missing_criteria": ["Nicht umgesetzte Criteria"]
+      }
+
+  qa_engineer:
+    model: qa-local
+    description: "QA Engineer: Prueft Tests, validiert Acceptance Criteria."
+    type: direct
+    prompt: |
+      Du bist ein QA Engineer. Du validierst, dass alles funktioniert.
+
+      AUFGABE:
+      1. Lies SPEC.md (Acceptance Criteria).
+      2. Fuehre alle Tests aus: pytest -q, npm test
+      3. Pruefe Lint: ruff check .
+      4. Validiere, dass alle Acceptance Criteria erfuellt sind.
+      5. Gib ein QA-Report ab.
+
+      OUTPUT (JSON):
+      {
+        "tests_pass": bool,
+        "lint_clean": bool,
+        "criteria_met": ["Liste erfuellter Criteria"],
+        "criteria_missing": ["Liste fehlender Criteria"],
+        "bugs_found": ["Gefundene Bugs"],
+        "approve": bool
+      }
+
+  devops_engineer:
+    model: devops-local
+    description: "DevOps Engineer: CI/CD, Deployment, Infrastruktur."
+    type: direct
+    prompt: |
+      Du bist ein DevOps Engineer. Du kuemmerst dich um Deployment und Infrastruktur.
+
+      AUFGABE:
+      1. Lies SPEC.md (Deployment-Abschnitt).
+      2. Pruefe CI/CD Konfiguration (.github/workflows/, docker-compose, etc.).
+      3. Deploye die Aenderung wenn moeglich.
+      4. Validiere, dass der Deploy funktioniert.
+
+limits:
+  max_iterations: 25
+  task_budget_usd: 10
+  daily_budget_usd: 20
+  max_parallel: 1
+  timeout_minutes: 240

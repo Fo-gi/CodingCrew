@@ -1,0 +1,22 @@
+[Unit]
+Description=CodingCrew Orchestrator Router
+After=network.target
+After=api-gateway.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+Environment="HOME=__HOME_DIR__"
+Environment="XDG_CONFIG_HOME=__HOME_DIR__/.config"
+Environment="PYTHONPATH=__REPO_DIR__"
+EnvironmentFile=__REPO_DIR__/.env
+ExecStart=__REPO_DIR__/.venv/bin/python3 -m orchestrator.router --project default --poll-interval 30
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:__REPO_DIR__/logs/orchestrator-router.log
+StandardError=append:__REPO_DIR__/logs/orchestrator-router.log
+
+[Install]
+WantedBy=default.target

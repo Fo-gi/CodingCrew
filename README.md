@@ -1,144 +1,245 @@
 # CodingCrew
 
-Autonomer Coding-Orchestrator mit zentraler YAML-Config. Pollt GitHub-Issues, orchestriert Agenten (direkte Ollama-Calls + `claude -p`), erstellt PRs bei Erfolg.
+Autonome Coding-Crew mit Microservices-Architektur. Pollt GitHub-Issues, verteilt sie an Worker (Ollama lokal oder Claude CLI Cloud), und erstellt PRs bei Erfolg.
 
-## Schnellstart (neuer Server)
+## Architektur
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   API Gateway   │    │   File Queue    │
+│   (FastAPI:8000)│───▶│   (JSON Files)  │
+└─────────────────┘    └────────┬────────┘
+                                │
+         ┌──────────────────────┼──────────────────────┐
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌──────────────┐
+│   Orchestrator  │    │   Ollama Worker │    │ Claude Worker│
+│     Router      │    │   (direct)      │    │ (claude_cli) │
+└─────────────────┘    └─────────────────┘    └──────────────┘
+```
+
+**Komponenten:**
+- **API Gateway**: FastAPI Server mit Webhooks, Queue-Management, Worker-Monitoring
+- **File Queue**: Persistente Queue mit Priority, Retry, Deduplication
+- **Orchestrator Router**: Pollt GitHub, erstellt Jobs basierend auf Labels
+- **Ollama Worker**: Lokale Modelle (qwen2.5, gemma4, etc.)
+- **Claude Worker**: Claude CLI für komplexe Tasks
+
+## Schnellstart
+
+### Installation
 
 ```bash
 # 1. Repo klonen
 git clone https://github.com/Fo-gi/CodingCrew.git ~/CodingCrew
 cd ~/CodingCrew
 
-# 2. .env anlegen und ausfuellen
+# 2. .env konfigurieren
 cp .env.example .env
-nano .env          # GH_TOKEN und GITHUB_TOKEN eintragen (gh auth token gibt deinen Token aus)
+nano .env  # GITHUB_TOKEN und andere Secrets eintragen
 
-# 3. Ziel-Repo in crew.yaml setzen
-nano crew.yaml     # github.repo anpassen, Ollama-URL pruefen
-
-# 4. Installieren (Dependencies + GitHub-Setup + systemd)
+# 3. Dependencies installieren
 bash scripts/install.sh
+
+# 4. systemd Services installieren
+bash scripts/install-systemd.sh
 ```
 
-Nach `install.sh` laeuft der Orchestrator als systemd-User-Service und startet automatisch nach Reboot.
-
-## Voraussetzungen
-
-| Tool | Benoetigt fuer |
-|------|----------------|
-| `python3 >= 3.10` | Orchestrator |
-| `gh` CLI | GitHub-Issues & PRs |
-| `claude` CLI | Coder-Agent (`claude -p`) |
-| `git` | Worktrees |
+### Services starten
 
 ```bash
-# Claude Code CLI installieren
-npm install -g @anthropic-ai/claude-code
+# Alle Services starten
+systemctl --user start api-gateway.service
+systemctl --user start orchestrator-router.service
+systemctl --user start worker-ollama.service
+systemctl --user start worker-claude.service
 
-# GitHub CLI
-sudo apt install gh && gh auth login
+# Status prüfen
+systemctl --user status api-gateway.service
+
+# Logs live
+tail -f ~/CodingCrew/logs/*.log
 ```
 
-## Architektur
+### Manuelles Starten (ohne systemd)
 
-```
-GitHub Issues (Labels)
-        |
-        v
-Orchestrator (Python asyncio, systemd)
-        |
-        +-- product_owner  (Ollama/Kimi)  -> SPEC schreiben, Epics aufteilen
-        +-- senior_dev     (Ollama)        -> komplexe Implementation
-        +-- junior_dev     (Ollama)        -> einfache Tasks
-        +-- code_reviewer  (Ollama)        -> PR-Review gegen SPEC
-        +-- qa_engineer    (Ollama)        -> Tests + Acceptance Criteria
-        +-- devops_engineer(Ollama)        -> Deployment
-        +-- coder          (claude -p)     -> direkte Implementation via Claude CLI
-                |
-        Stop-Hook (src/hooks/stop_gate.py)
-          exit 0 = Tests gruenn + Diff vorhanden -> PR oeffnen
-          exit 2 = Claude macht weiter
-                |
-        Eskalation: 3 Versuche, dann agent-stuck
+```bash
+# Terminal 1: API Gateway
+bash scripts/run-api.sh
+
+# Terminal 2: Orchestrator
+bash scripts/run-orchestrator.sh
+
+# Terminal 3: Ollama Worker
+bash scripts/run-worker.sh ollama junior_dev
+
+# Terminal 4: Claude Worker
+bash scripts/run-worker.sh claude senior_dev
 ```
 
-## crew.yaml
+## Konfiguration
 
-Alles in einer Datei konfiguriert:
+### Projekt-Config
+
+Jedes Projekt hat eine eigene Config in `configs/<projekt>.yaml`:
+
+```bash
+# Neues Projekt anlegen
+cp configs/default.yaml configs/my-project.yaml
+nano configs/my-project.yaml  # repo, agents, models anpassen
+```
+
+### crew.yaml Sektionen
 
 | Sektion | Zweck |
 |---------|-------|
-| `github` | Ziel-Repo, Auto-Create Repo/Labels |
-| `providers` | Ollama/Anthropic/OpenAI — base_url oder api_key_env |
-| `models` | Alias -> Provider + Modellname + temperature |
-| `agents` | Name, Prompt, Modell, Typ (direct / claude_cli) |
-| `tags` | Issue-Labels, Prioritaet, Handler-Agent |
-| `limits` | Iterationen, Budget, Timeout, max_parallel |
+| `github` | Ziel-Repo, Auto-Create Optionen |
+| `providers` | Ollama/Anthropic Konfiguration |
+| `models` | Modell-Aliase mit Provider + Parametern |
+| `agents` | Agenten mit Prompt, Modell, Typ (direct/claude_cli) |
+| `tags` | Issue-Labels mit Handler-Agent |
+| `limits` | Iterationen, Budget, Timeout |
 
 ### Agent-Typen
 
-- `direct`: Direkter API-Call (Ollama oder Anthropic SDK) — fuer Planung/Review
-- `claude_cli`: Via `claude -p` in einem Worktree — fuer eigentliche Implementierung
+- **`direct`**: Direkter API-Call (Ollama) — für Planung, Review, QA
+- ****`claude_cli`**: Via `claude -p` in Worktree — für Implementation
 
-## Taeglicher Workflow
+## Workflow
 
-```bash
-# Issue mit SPEC anlegen
-gh issue create --repo dein-org/dein-repo --label agent-ready --editor
-
-# Orchestrator-Status
-systemctl --user status orchestrator
-
-# Live-Log
-tail -f ~/CodingCrew/logs/orchestrator.log
-
-# Pause / Weiter
-systemctl --user stop orchestrator
-systemctl --user start orchestrator
+```
+agent-idea → agent-spec → agent-design → agent-ready → agent-review → agent-test → agent-deploy → agent-done
+                                                              ↑
+                         agent-escalation-1/2 ←───────────────┘
 ```
 
-## SPEC.md-Vorlage
+| Label | Bedeutung |
+|-------|-----------|
+| `agent-idea` | Rohe Idee → Product Owner erstellt SPEC |
+| `agent-epic` | Große Vision → wird in Teil-Issues zerlegt |
+| `agent-ready` | Bereit zur Implementation |
+| `agent-review` | Code Review läuft |
+| `agent-test` | QA validiert Tests |
+| `agent-deploy` | Deployment erfolgt |
+| `agent-question` | Agent wartet auf Nutzer-Antwort |
+| `agent-stuck` | 3 Versuche fehlgeschlagen → manuell |
 
+## OllamaWorker Code-Generierung
+
+Der `OllamaWorker` (`junior_dev`, `senior_dev`) kann Code generieren und anwenden:
+
+**Prompt-Format für Agents:**
 ```markdown
-# SPEC: <kurze Beschreibung>
+OUTPUT FORMAT (wichtig):
+Du MUSST Dateien als Markdown-Code-Bloecke zurueckgeben.
+Jeder Code-Block repraesentiert EINE Datei oder EINEN Shell-Befehl.
 
-## Goal
-<ein Absatz>
-
-## Acceptance criteria (machine-checkable)
-- [ ] ...
-- [ ] All tests pass: `pytest -q`
-- [ ] Lint clean: `ruff check .`
-
-## Out of scope
-- ...
-
-## Budget
-max_iterations: 25
-max_usd: 8
+Fuer Dateien: Schreibe in der ERSTEN ZEILE als Kommentar den Dateipfad.
+```python
+# file: app.py
+from flask import Flask
+app = Flask(__name__)
 ```
 
-## Nuetzliche Befehle
+Fuer Shell-Befehle (Setup, Tests):
+```bash
+# shell
+pip install flask pytest
+```
+```
+
+**Ablauf:**
+1. Ollama generiert Code als Markdown-Code-Blöcke
+2. Worker parsed die Blöcke (`# file: path` oder `# shell`)
+3. Dateien werden geschrieben, Shell-Befehle ausgeführt
+4. `pip install` wird automatisch in ein venv umgeleitet
+5. `.venv/`, `__pycache__/`, `.pytest_cache/` werden zu `.gitignore` hinzugefügt
+6. Tests (`pytest -q`) und Lint (`ruff check .`) werden ausgeführt
+7. Bei Erfolg: Ein Commit mit allen Änderungen
+
+## API Endpoints
 
 ```bash
-# Config validieren (gibt JSON aus)
-python3 -m src.config
+# API Docs
+http://localhost:8000/docs
 
-# Einzelner Durchlauf ohne Loop
-python3 -m src.orchestrator --once
+# Health Check
+curl http://localhost:8000/health
 
-# GitHub-Setup wiederholen (Labels neu anlegen)
+# Queue Stats
+curl http://localhost:8000/api/v1/queue/stats
+
+# Worker Status
+curl http://localhost:8000/api/v1/workers
+
+# Projects
+curl http://localhost:8000/api/v1/projects
+```
+
+## Nützliche Befehle
+
+```bash
+# GitHub Setup (Labels anlegen)
 python3 scripts/setup_github.py
 
-# Stuck-Issue befreien (Ghost-Label)
-source .env && gh issue edit N --repo "$GITHUB_TOKEN_REPO" --remove-label agent-working
+# Queue purgen
+curl -X POST http://localhost:8000/api/v1/queue/purge
 
-# Hooks direkt testen
-echo '{}' | python3 src/hooks/stop_gate.py; echo "Exit: $?"
+# Worker Health aufräumen
+curl -X POST http://localhost:8000/api/v1/workers/cleanup
+
+# Stuck-Issue befreien (Ghost-Label)
+gh issue edit N --repo "$GITHUB_REPO" --remove-label agent-working
 ```
 
-## Kein LiteLLM
+## Logs
 
-- Direkte HTTP-Calls zu Ollama (`/api/chat`)
-- SDK oder HTTP zu Anthropic
-- Kein Proxy-Port 4000 noetig
+| Log | Zweck |
+|-----|-------|
+| `logs/api-gateway.log` | API Requests, Errors |
+| `logs/orchestrator-router.log` | Issue-Polling, Job-Erstellung |
+| `logs/worker-ollama.log` | Ollama Calls, Ergebnisse |
+| `logs/worker-claude.log` | Claude CLI Sessions |
+| `logs/issue-N-*.jsonl` | Detail-Log pro Issue |
+
+## Voraussetzungen
+
+| Tool | Zweck |
+|------|-------|
+| `python3 >= 3.10` | Orchestrator, Worker |
+| `gh` CLI | GitHub-Issues & PRs |
+| `claude` CLI | Coder-Agent (`claude -p`) |
+| `git` | Worktrees |
+| Ollama (optional) | Lokale Modelle via Tailscale |
+
+## Projektstruktur
+
+```
+CodingCrew/
+├── api/                  # FastAPI Gateway
+├── workers/              # Worker Implementierungen
+├── jobqueue/             # File-based Queue
+├── orchestrator/         # Router Service
+├── shared/               # Shared Utilities
+├── configs/              # Projekt-Konfigurationen
+├── scripts/              # Start-Skripte
+├── systemd/              # systemd Services
+├── src/                  # Legacy: Providers, GitHub, Hooks
+├── workspace/            # Geklonte Repos
+├── worktrees/            # Aktive Worktrees
+└── logs/                 # Log-Dateien
+```
+
+## Migration von Monolith
+
+Falls du vom alten `src/orchestrator.py` kommst:
+
+| Alt | Neu |
+|-----|-----|
+| `src/orchestrator.py` | `orchestrator/router.py` + `workers/*` |
+| Direkte Agent-Calls | `OllamaWorker` / `ClaudeWorker` |
+| Polling im Loop | Orchestrator + Queue |
+| Keine API | FastAPI Gateway |
+
+Siehe `ARCHITECTURE.md` für Details.

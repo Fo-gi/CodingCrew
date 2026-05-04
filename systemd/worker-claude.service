@@ -1,0 +1,23 @@
+[Unit]
+Description=CodingCrew Claude Worker (Eskalation-3 Fallback)
+After=network.target
+After=worker-ollama.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+Environment="HOME=__HOME_DIR__"
+Environment="XDG_CONFIG_HOME=__HOME_DIR__/.config"
+EnvironmentFile=__REPO_DIR__/.env
+ExecStartPre=/bin/sleep 15
+# Claude Worker verarbeitet NUR agent-escalation-3 Jobs (automatisches Fallback)
+ExecStart=/bin/bash -c 'source __REPO_DIR__/.env && exec __REPO_DIR__/.venv/bin/python3 -c "import asyncio; from workers.claude_worker import ClaudeWorker; from src.models import CrewConfig; from pathlib import Path; config = CrewConfig.load(Path.home() / \x27CodingCrew\x27 / \x27crew.yaml\x27); worker = ClaudeWorker(\x27claude_fallback\x27, config); asyncio.run(worker.run())"'
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:__REPO_DIR__/logs/worker-claude.log
+StandardError=append:__REPO_DIR__/logs/worker-claude.log
+
+[Install]
+WantedBy=default.target
